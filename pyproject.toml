@@ -1,0 +1,14 @@
+[project]
+name = "emma-hdf5-benchmark"
+version = "0.1.0"
+description = "Standalone lossless HDF5 compression benchmark for EMMa HDF5Source augmentations"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "h5py>=3.16.0",
+    "hdf5plugin>=6.0.0",
+    "emma-wrapper>=0.1.14",
+]
+
+[tool.uv.sources]
+emma-wrapper = { git = "https://github.com/AltFLanca/EMMa-Wrapper.git", rev = "c1d9a8cd6b09edb97325e8dd845c5100d7ffacca" }
