@@ -1,7 +1,7 @@
 [project]
 name = "emma-hdf5-benchmark"
 version = "0.1.0"
-description = "Standalone lossless HDF5 compression benchmark for EMMa HDF5Source augmentations"
+description = "Benchmark HDF5 compression for EMMa HDF5Source augmentations."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

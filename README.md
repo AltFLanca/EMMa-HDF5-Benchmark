@@ -1,156 +1,48 @@
-# HDF5 lossless compression benchmark for EMMa augmentations
 
-A standalone benchmark for comparing **lossless HDF5 compression methods** on representative augmentation data written through EMMa-Wrapper's `HDF5Source`.
+# EMMa-HDF5-Benchmark
 
-## Benchmark workflow
+Benchmark HDF5 compression methods on EMMa depth maps, masks, and embeddings, comparing storage efficiency and read/write performance across different compression configurations. The benchmark compares uncompressed storage against several lossless compression methods, including gzip, LZF, Zstd, LZ4, BZip2, Bitshuffle, and Blosc.
 
-The input file may already be compressed. The benchmark does not compare candidate files against the compressed input bytes directly. Instead it:
+Dataset access is handled through [EMMa-Wrapper](https://github.com/AltFLanca/EMMa-Wrapper).
 
-1. Opens the input file through `HDF5Source`.
-2. Selects up to `--items` real items.
-3. Reads those items, transparently decoding any existing HDF5 compression.
-4. Writes the decoded NumPy values to `<work-dir>/source_raw.h5` with compression and shuffle disabled.
-5. Rewrites that exact raw source using every selected compression configuration.
-6. Measures compression ratio, write throughput, sequential reads, random single-item reads, and random batch reads.
-7. Checks sampled outputs with `numpy.array_equal`.
+## Setup
 
-This gives every compression method the same uncompressed baseline regardless of how the original source file was stored.
-
-## Usage
-
-Benchmark 1,000 randomly selected items from a real augmentation file:
+Install the project dependencies using [uv](https://docs.astral.sh/uv/). From the repository root, run:
 
 ```bash
-uv run src/benchmark_hdf5_lossless.py \
-  --source-file /path/to/augmentation.h5 \
-  --items 1000 \
-  --source-selection random \
-  --work-dir runs/real_1000 \
-  --overwrite
+uv sync --locked
 ```
 
-Random source selection and random read requests are deterministic by default (`--seed 123`).
+You need an existing HDF5 augmentation file to run the benchmark. No datasets are included in this repository.
 
-To use the first N items instead:
+## Repository Structure
+
+- `src/benchmark_hdf5.py` - Benchmarks HDF5 compression configurations, measuring storage efficiency and read/write performance.
+
+## Run Benchmark
+
+Benchmarking requires an existing HDF5 augmentation file, provided through the `--source-file` argument. The input must follow the `HDF5Source` layout, with one top-level dataset per ASIN. The input file may already be compressed. Selected items are first decoded and written to a common uncompressed baseline to ensure consistent comparisons across configurations.
+
+The benchmark can be configured using the following arguments:
+
+- `--items` - Maximum number of source items to benchmark.
+- `--source-selection` - Item selection strategy (`random` or `first`).
+- `--seed` - Random seed for reproducible sampling and read requests.
+- `--preset` - Compression configuration grid (`quick` or `full`).
+- `--methods` - Optional subset of compression methods to evaluate.
+- `--single-count` - Number of random single-item reads per configuration.
+- `--batch-count` - Number of random batch reads per configuration.
+- `--read-batch-size` - Number of items in each random read batch.
+- `--validate-count` - Number of sampled items checked for exact lossless equality.
+- `--work-dir` - Directory for benchmark outputs.
+- `--overwrite` - Replaces existing benchmark outputs.
+- `--delete-benchmark-files` - Removes compressed candidate files after measurement.
+
+Run the benchmark with:
 
 ```bash
-uv run src/benchmark_hdf5_lossless.py \
-  --source-file /path/to/augmentation.h5 \
-  --items 1000 \
-  --source-selection first \
-  --work-dir runs/real_1000 \
-  --overwrite
-```
-
-## Compression methods
-
-The available method families are:
-
-- `none`
-- `gzip`, with and without HDF5 byte shuffle
-- `lzf`, with and without HDF5 byte shuffle
-- `zstd` (`hdf5plugin.Zstd`)
-- `lz4` (`hdf5plugin.LZ4`)
-- `bzip2` (`hdf5plugin.BZip2`)
-- `bitshuffle`, with no secondary compressor, LZ4, and Zstd
-- `blosc`, using BloscLZ, LZ4, LZ4HC, zlib, and Zstd with multiple levels/shuffle modes
-
-The default `quick` preset tests a representative parameter grid. Use `--preset full` for a larger sweep:
-
-```bash
-uv run src/benchmark_hdf5_lossless.py \
-  --source-file /path/to/augmentation.h5 \
-  --items 1000 \
-  --preset full \
-  --work-dir runs/full \
-  --overwrite
-```
-
-Or restrict the benchmark to selected method families:
-
-```bash
-uv run src/benchmark_hdf5_lossless.py \
-  --source-file /path/to/augmentation.h5 \
-  --items 1000 \
-  --methods none lzf gzip blosc zstd \
-  --work-dir runs/core \
-  --overwrite
-```
-
-There is no compatibility-based method skipping. Every configuration in the selected grid is attempted. If a configuration raises an exception, its CSV row is recorded with `status=error` and the benchmark continues to the next configuration.
-
-## Compression-ratio metrics
-
-`results.csv` reports two useful ratios:
-
-- `compression_ratio_vs_source` = uncompressed `source_raw.h5` whole-file bytes / benchmark whole-file bytes.
-- `payload_compression_ratio` = logical NumPy payload bytes / compressed HDF5 dataset storage bytes.
-
-`payload_compression_ratio` isolates the dataset payload from fixed HDF5 metadata and is usually the cleaner metric for comparing compressors. `compression_ratio_vs_source` additionally reflects whole-file overhead and is useful for deployment/storage estimates.
-
-The `none` configuration is a useful sanity check and should normally have a payload compression ratio close to `1.0`.
-
-## Performance metrics
-
-For each configuration the CSV records, among other fields:
-
-- `write_seconds`
-- `write_items_per_sec`
-- `sequential_read_seconds`
-- `sequential_items_per_sec`
-- `random_single_read_seconds`
-- `random_single_reads_per_sec`
-- `random_batch_read_seconds`
-- `random_batch_reads_per_sec`
-- `random_batch_items_per_sec`
-- `lossless_ok`
-
-For ML training, `random_batch_items_per_sec` is generally the most directly interpretable batch-read metric because it measures how many augmentation items are delivered per second rather than how many batch calls are completed.
-
-## Read benchmark controls
-
-Defaults:
-
-- `--single-count 2000`
-- `--batch-count 200`
-- `--read-batch-size 32`
-- `--validate-count 32`
-
-For example:
-
-```bash
-uv run src/benchmark_hdf5_lossless.py \
-  --source-file /path/to/augmentation.h5 \
-  --items 1000 \
-  --single-count 5000 \
-  --batch-count 500 \
-  --read-batch-size 64 \
-  --work-dir runs/batch64 \
-  --overwrite
-```
-
-## Output files
-
-A normal run creates:
-
-```text
-<work-dir>/
-├── source_raw.h5
-├── results.csv
-└── bench_files/
-    ├── 0001__....h5
-    ├── 0002__....h5
-    └── ...
-```
-
-Use `--delete-benchmark-files` if only the CSV results and raw baseline need to be retained.
-
-## Paper results
-
-The results in the paper were obtained using:
-```bash
-uv run src/benchmark_hdf5_lossless.py   
-  --source-file /home/user/datasets/EMMa-GLP-Depth/glp_depth_uint16_2.63.h5 \
+uv run src/benchmark_hdf5.py \
+  --source-file /path/to/EMMa-DepthAnythingV3/da3_large1.1_uint16_504.h5 \
   --items 1000 \
   --source-selection random \
   --seed 123 \
@@ -158,6 +50,24 @@ uv run src/benchmark_hdf5_lossless.py
   --single-count 2000 \
   --batch-count 200 \
   --read-batch-size 32 \
-  --work-dir runs/glp_depth_uint16_2.63_1000 \
+  --work-dir runs/da3_large1.1_uint16_504_1000 \
   --overwrite
 ```
+
+## Benchmark Results
+
+The benchmark generates the following outputs in the specified work directory:
+
+- `source_raw.h5` - Uncompressed baseline containing the selected source items.
+- `results.csv` - Performance metrics and validation results for each compression configuration.
+- `bench_files/` - HDF5 files generated for each compression configuration.
+
+The results include:
+
+- **Write throughput** - Speed of writing compressed data.
+- **Sequential read throughput** - Speed of reading items sequentially.
+- **Random read throughput** - Speed of reading individual items and batches in random order.
+- **Compression ratio** - Ratio between the uncompressed baseline file size and the compressed file size, including HDF5 overhead.
+- **Payload compression ratio** - Ratio between the logical array size and the stored dataset size.
+
+Configurations that fail during benchmarking are recorded in `results.csv` with `status=error`.
